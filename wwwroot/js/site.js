@@ -159,29 +159,33 @@ class Section {
     for (var i = 0; i < wordSets.length; i++) {
       for (var j = 0; j < wordSets[i].length; j++) {
         if(wordSets[i][j] != '') {
-          wordSets[i][j] = Letterize(wordSets[i][j])
+          wordSets[i][j] = FormatWord(wordSets[i][j])
           let word = wordSets[i][j]
 
           if(!words.hasOwnProperty(word)) {
-            let data = await FetchPronunciation(word)
+            let data = FetchPronunciation(word)
 
             words[word] = []
 
-            words[word][0] = data.voicing.split(' ')
+            words[word][0] = data.split(' ')
 
-            words[word][1] = []
+            if (words[word][0] != ".") {
+              words[word][1] = []
 
-            let j = words[word][0].length - 1
-            while(j >= 0) {
-              if (words[word][0][j][0].match(/A|E|I|O|U/) != null) {
-                break
+              let j = words[word][0].length - 1
+              while(j >= 0) {
+                if (words[word][0][j][0].match(/A|E|I|O|U/) != null) {
+                  break
+                }
+                j--
               }
-              j--
-            }
 
-            while(j < words[word][0].length) {
-              words[word][1].push(words[word][0][j])
-              j++
+              while(j < words[word][0].length) {
+                words[word][1].push(words[word][0][j])
+                j++
+              }
+            } else {
+              words[word][1] = ".";
             }
           }
         }
@@ -195,7 +199,7 @@ class Section {
 
     // Listing words in pairs
     let isRhyme = new Array(flatText.length).fill(false)
-    flatText = flatText.map(word => Letterize(word))
+    flatText = flatText.map(word => FormatWord(word))
 
     wordSets.forEach((wordSet, setIndex) => {
       let decIndex = 0
@@ -258,11 +262,10 @@ class Section {
   }
 
   get Height() {
-    return Math.max(this.text.innerText.replace(/\n*\n/g, '\n').split(/\n/).length, 2) * 24 + 45
+    return Math.max(this.text.innerText.replace(/\n*\n/g, '\n').split(/\n/).length, 2) * 24 + 70
   }
 
   ChangeHeight(targetHeight) {
-    console.log('changing height...')
     if (targetHeight === true) {
       var height = targetHeight + 0
       targetHeight = this.Height
@@ -282,6 +285,8 @@ class Section {
         } else {
           section.container.remove()
           CreateSections()
+          clearInterval(animation);
+          delete this
         }
       } else {
         height -= (height - targetHeight) / 5;
@@ -326,27 +331,34 @@ var formatWait
 the user presses a letter key. */
 
 function Start() {
-  console.log(dictionary[1]);
   // Waiting 1 second after each keypress for FormatRoutine()
   document.addEventListener('keydown', e => {
-    if (e.key.match(/[A-z]|[0-9]|\.|\?|!|,|'|"|-| /) == null) {
-      e.preventDefault()
-      console.log('entered')
-    } else if (e.key == ' ') {
-      clearTimeout(formatWait)
-    } else {
-      clearTimeout(formatWait)
-      formatWait = setTimeout(FormatCurrent, 1000)
-    }
-
     currentSection = GetCurrentSection()
     if (Math.abs(currentSection.container.offsetHeight - currentSection.Height) > 2 ) {
       currentSection.ChangeHeight(currentSection.Height)
       RepositionElements(-1, 0)
     }
+
+    if (e.key.match(/[A-z]|[0-9]|\.|\?|!|,|'|"|-| /) == null) {
+      e.preventDefault()
+    } else if (e.key == ' ') {
+      clearTimeout(formatWait)
+    } else if (e.key == 'Enter') {
+      if (currentSection.text.childNodes[currentSection.text.childNodes.length - 2].innerHTML == "<br>") {
+        e.preventDefault();
+      }
+    } else {
+      clearTimeout(formatWait)
+      formatWait = setTimeout(FormatCurrent, 1000)
+    }
   })
 
-  CreateCSS()
+  document.addEventListener('paste', e => {
+    e.preventDefault();
+    alert('Rymcat does not currently support paste! However, it is currently in the works. Sorry.')
+  })
+
+  GenerateCSS()
   CreateSections()
   FormatAll()
 }
@@ -383,16 +395,18 @@ function Rhyme(pair) {
   return 0
 }
 
-// Returns the pronunciation for a word by pinging the server.
-async function FetchPronunciation(word) {
-  return await fetch('api/words/' + word)
-    .then(response => response.json())
-    .catch(error => {
-      console.error('Unable to get items: ' + word, error)
-    })
+// Returns the pronunciation for a word by checking against the list in dictionary.js.
+function FetchPronunciation(word) {
+  for (let i = 0; i < dictionary.length; i++) {
+    if (dictionary[i][0] == word) {
+      return dictionary[i][1];
+    }
+  }
+
+  return ".";
 }
 
-function CreateCSS() {
+function GenerateCSS() {
   let pronLetters = ['AA', 'AE', 'AH', 'AO', 'AW', 'AY', 'EL', 'EH', 'EM', 'EN', 'ER', 'EY', 'IH', 'IY', 'OW', 'OY', 'UH', 'UW']
 
   let ending = ''
@@ -420,7 +434,6 @@ function CreateCSS() {
 //#region SECTION FUNCTIONS
 
 function CreateSections() {
-  console.log("let's goooooo");
   sections = []
 
   let containerElements = document.getElementsByClassName('editable')
@@ -585,8 +598,11 @@ function IsWhitespace(code) {
 
 // Removes all characters from a string except for letters and apostrophes, makes all letters uppercase,
 // and replaces words like "rhymin'" with "rhyming" For example, "&r3h2y & m,|ES^s)" becomes "RHYMESS".
-function Letterize(string) {
-  return string.replace(/[^A-z\d'-]/g, '').toUpperCase().replace(/IN'$/, 'ING');
+function FormatWord(string) {
+  return string
+    .replace(/[^A-z\d'-]/g, '')
+    .toUpperCase()
+    .replace(/IN'$/, 'ING');
 }
 
 // Converts an array like [[A, B], [B, C], [D, E]] to a set [A, B, C, D, E]
